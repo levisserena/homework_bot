@@ -7,6 +7,7 @@ import os
 import sys
 import time
 from http import HTTPStatus
+from logging import StreamHandler
 from logging.handlers import RotatingFileHandler
 from typing import Any, Optional
 
@@ -28,7 +29,7 @@ ENDPOINT: str = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS: dict[str, str] = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
 ALL_WORKS: bool = False  # True - для запроса всех работ.
-DAYS_AGO: int = 600
+DAYS_AGO: int = 21
 SECOND_IN_DAY: int = 86400  # Секунд в сутках.
 
 HOMEWORK_VERDICTS: dict[str, str] = {
@@ -46,17 +47,20 @@ INDEX_LAST_HOMEWORKS: int = 0
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-handler = RotatingFileHandler(
+handler_file = RotatingFileHandler(
     'logger.log',
     maxBytes=50000000,
     backupCount=5,
     encoding='utf-8'
 )
+handler_stream = StreamHandler(stream=sys.stdout)
 formatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+handler_file.setFormatter(formatter)
+handler_stream.setFormatter(formatter)
+logger.addHandler(handler_file)
+logger.addHandler(handler_stream)
 
 
 def check_tokens() -> None:
@@ -66,7 +70,7 @@ def check_tokens() -> None:
     if not check:
         message_err: str = 'Отсутствует доступ к необходимым токенам и/или ID!'
         logger.critical(f'{message_err}')
-        sys.exit()
+        exit(1)
 
 
 def send_message(bot: TeleBot, message: str) -> None:
@@ -91,10 +95,10 @@ def get_api_answer(timestamp: int) -> dict[str, Any]:
             params=payload
         )
         if response.status_code != HTTPStatus.OK:
-            raise StatusNotOk(
-                'Запрос к основному API вернул код не 200, а '
-                f'{response.status_code}.'
-            )
+            massage_error: str = ('Запрос к основному API вернул код не 200, а'
+                                  f'{ response.status_code}.')
+            logger.error(massage_error)
+            raise StatusNotOk(massage_error)
         response.raise_for_status()
     except requests.exceptions.RequestException as error:
         logger.error(f'Ошибка при запросе к основному API. {error}')
@@ -105,43 +109,54 @@ def get_api_answer(timestamp: int) -> dict[str, Any]:
 def check_response(response: dict[str, Any]):
     """Функция проверяет ответ на запрос.
 
-    Принимает ответ в виде словаря, возвращает по ключу и индексу
+    Принимает ответ на запрос в виде словаря, возвращает словарь с данными по
+    последней работе.
     """
     try:
         homework: list = response[KEY_HOMEWORKS]
     except KeyError:
-        logger.debug(
+        logger.error(
             f'В ответе от API нет ключа {KEY_HOMEWORKS}.'
         )
         raise KeyError('{KEY_HOMEWORKS} отсутствует в ответе основного API.')
     if type(response[KEY_HOMEWORKS]) is not list:
-        raise TypeError(f'Под ключём {KEY_HOMEWORKS} хранится не список.')
+        message_error_key: str = (
+            f'Под ключём {KEY_HOMEWORKS} хранится не список.'
+        )
+        logger.error(message_error_key)
+        raise TypeError(message_error_key)
     try:
         last_homeworks: dict[str, Any] = homework[INDEX_LAST_HOMEWORKS]
     except IndexError:
-        logger.debug(
+        message_error_index: str = (
             f'Список работ полученный по ключу {KEY_HOMEWORKS} оказался пуст.'
         )
+        logger.debug(message_error_index)
+        raise IndexError(message_error_index)
     else:
         return last_homeworks
 
 
 def parse_status(homework: dict[str, Any]) -> str:
-    """Функция проверяет изменение статуса работы."""
+    """Функция проверяет статуса работы и подгатавлевает сообщение."""
     try:
         status: str = homework[KEY_STATUS]
         homework_name: str = homework[KEY_LESSON_NAME]
     except KeyError:
-        logger.debug(
+        message_error_key: str = (
             'В словаре с данными об отдельной работе не обнаружен один из '
             f'ключей {KEY_STATUS}, {KEY_LESSON_NAME}.'
         )
+        logger.error(message_error_key)
+        raise KeyError(message_error_key)
     try:
         verdict = HOMEWORK_VERDICTS[status]
     except KeyError:
-        logger.debug(
+        message_error_key_: str = (
             f'Неожиданное значение стауса работы: {status}.'
         )
+        logger.error(message_error_key_)
+        raise KeyError(message_error_key_)
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
@@ -152,17 +167,29 @@ def main() -> None:
     from_date: int = 0
     if not ALL_WORKS:
         from_date = timestamp - DAYS_AGO * SECOND_IN_DAY
+    message_old_status: str = ''
+    message_old_error: str = ''
 
     while True:
         try:
             check_tokens()
             api_answer = get_api_answer(from_date)
             last_homeworks = check_response(api_answer)
-            message_new_status = parse_status(last_homeworks)
-            send_message(bot, message_new_status)
+            message_now_status = parse_status(last_homeworks)
+            if message_now_status != message_old_status:
+                send_message(bot, message_now_status)
+                message_old_status = message_now_status
+            else:
+                logger.debug('Отсутствует новые статусы.')
         except Exception as error:
-            message = f'Сбой в работе программы: {error}'
-            logger.error(message)
+            message_now_error = f'Сбой в работе программы: {error}'
+            logger.error(message_now_error)
+            if message_now_error != message_old_error:
+                try:
+                    send_message(bot, message_now_error)
+                    message_old_error = message_now_error
+                except:
+                    pass
 
         time.sleep(RETRY_PERIOD)
 
