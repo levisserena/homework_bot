@@ -188,7 +188,7 @@ def main() -> None:
                 try:
                     send_message(bot, message_now_error)
                     message_old_error = message_now_error
-                except:
+                except Exception:
                     pass
 
         time.sleep(RETRY_PERIOD)
