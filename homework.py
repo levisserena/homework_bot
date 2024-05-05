@@ -154,7 +154,7 @@ def parse_status(homework: dict[str, Any]) -> str:
     """Функция проверяет статуса работы и подготавливает сообщение."""
     try:
         status: str = homework[KEY_STATUS]
-        homework_name: str = homework[KEY_LESSON_NAME]    
+        homework_name: str = homework[KEY_LESSON_NAME]
     except KeyError:
         raise KeyError('В словаре с данными об отдельной работе не обнаружен '
                        f'один из ключей "{KEY_STATUS}", "{KEY_LESSON_NAME}".')
