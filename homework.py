@@ -12,12 +12,12 @@ from logging.handlers import RotatingFileHandler
 from typing import Any, Optional
 
 import requests
-import simplejson
 from dotenv import load_dotenv
+from simplejson.errors import JSONDecodeError
 from telebot import TeleBot
 from telegram.error import TelegramError
 
-from exceptions import StatusNotOk
+from exceptions import RequestException, StatusNotOk
 from utilities import datatime_unix
 
 
@@ -31,10 +31,6 @@ RETRY_PERIOD: int = 600
 UTC: int = 14400  # +4 часа для Астрахани в секундах.
 ENDPOINT: str = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS: dict[str, str] = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
-
-ALL_WORKS: bool = False  # True - для запроса всех работ.
-DAYS_AGO: int = 21
-SECOND_IN_DAY: int = 86400  # Секунд в сутках.
 
 HOMEWORK_VERDICTS: dict[str, str] = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
@@ -108,13 +104,13 @@ def get_api_answer(timestamp: int) -> dict[str, Any]:
             raise StatusNotOk('Запрос к основному API вернул код не "200", а'
                               f'"{response.status_code}".')
         response.raise_for_status()
-    except requests.exceptions.RequestException as error:
-        raise error(f'Ошибка при запросе к основному API. {error}')
+    except requests.exceptions.RequestException:
+        raise RequestException('Ошибка при запросе к основному API.')
     try:
         api_answer: dict[str, Any] = response.json()
-    except simplejson.errors.JSONDecodeError as error:
-        raise error('При попытке JSON преобразовать в пригородные для Python '
-                    'формат произошла ошибка.')
+    except JSONDecodeError:
+        raise JSONDecodeError('При попытке JSON преобразовать в пригородные '
+                              'для Python формат произошла ошибка.')
     return api_answer
 
 
