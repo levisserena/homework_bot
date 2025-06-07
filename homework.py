@@ -28,7 +28,7 @@ TELEGRAM_TOKEN: Optional[str] = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID: Optional[str] = os.getenv('TELEGRAM_CHAT_ID')
 
 RETRY_PERIOD: int = 600
-UTC: int = 14400  # +4 часа для Астрахани в секундах.
+UTC: int = int(os.getenv('UTC'))
 ENDPOINT: str = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS: dict[str, str] = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 handler_file = RotatingFileHandler(
     'logger.log',
-    maxBytes=50000000,
+    maxBytes=50_000_000,
     backupCount=5,
     encoding='utf-8'
 )
